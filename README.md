@@ -12,7 +12,7 @@
 
 To install Recycler CLI with a single command:
 ```bash
-curl -sSL https://github.com/Toymakerftw/recycler/raw/refs/heads/go/install.sh | sudo bash
+curl -sSL https://github.com/Toymakerftw/recycler/raw/refs/heads/go/scripts/install.sh | sudo bash
 ```
 
 > **Configuration File**: `/etc/recycler-cli/config.conf`  
@@ -59,7 +59,7 @@ The `config.conf` file (located by default at `/etc/recycler-cli/config.conf`) a
 
 To uninstall Recycler CLI, use:
 ```bash
-curl -sSL https://github.com/Toymakerftw/recycler/raw/refs/heads/go/uninstall.sh | sudo bash
+curl -sSL https://github.com/Toymakerftw/recycler/raw/refs/heads/go/scripts/uninstall.sh | sudo bash
 ```
 
 During uninstallation, you will be prompted to remove the log directory and recycle bin directory if desired.
