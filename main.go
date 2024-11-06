@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -163,22 +164,70 @@ func moveFileToRecycleBin(file string, serverDir string, ip string, hostname str
 	timestamp := now.Format("15:04:05")
 	destPath := filepath.Join(dateDir, fmt.Sprintf("%s_%s%s", fileInfo.Name(), timestamp, filepath.Ext(file)))
 
-	// Move file to recycle bin
+	// Try to move file to recycle bin
 	logrus.WithFields(logrus.Fields{
 		"file":     file,
 		"destPath": destPath,
 		"server":   fmt.Sprintf("%s_%s", ip, hostname),
 	}).Info("Moving file to recycle bin")
 	err = os.Rename(file, destPath)
+
+	// If os.Rename fails with cross-device error, copy and delete the file
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"file":     file,
-			"destPath": destPath,
-			"server":   fmt.Sprintf("%s_%s", ip, hostname),
-			"error":    err,
-		}).Error("Failed to move file to recycle bin")
-		logrus.Warn("Operation incomplete. Check files and try again.")
-		return
+		if linkErr, ok := err.(*os.LinkError); ok && linkErr.Err.Error() == "invalid cross-device link" {
+			logrus.WithFields(logrus.Fields{
+				"file":     file,
+				"destPath": destPath,
+				"server":   fmt.Sprintf("%s_%s", ip, hostname),
+			}).Info("Cross-device link error detected. Copying file instead.")
+
+			// Open source file for reading
+			srcFile, err := os.Open(file)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"file": file, "error": err}).Error("Failed to open source file")
+				return
+			}
+			defer srcFile.Close()
+
+			// Create destination file
+			destFile, err := os.Create(destPath)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"destPath": destPath, "error": err}).Error("Failed to create destination file")
+				return
+			}
+			defer destFile.Close()
+
+			// Copy contents
+			_, err = io.Copy(destFile, srcFile)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"file": file, "destPath": destPath, "error": err}).Error("Failed to copy file")
+				return
+			}
+
+			// Close files before deleting source file
+			srcFile.Close()
+			destFile.Close()
+
+			// Delete original file
+			err = os.Remove(file)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"file": file, "error": err}).Error("Failed to delete original file after copying")
+				return
+			}
+			logrus.WithFields(logrus.Fields{
+				"file":     file,
+				"destPath": destPath,
+				"server":   fmt.Sprintf("%s_%s", ip, hostname),
+			}).Info("File successfully copied to recycle bin and original deleted")
+		} else {
+			logrus.WithFields(logrus.Fields{
+				"file":     file,
+				"destPath": destPath,
+				"server":   fmt.Sprintf("%s_%s", ip, hostname),
+				"error":    err,
+			}).Error("Failed to move file to recycle bin")
+			return
+		}
 	}
 
 	// Write metadata to JSON file
@@ -198,12 +247,6 @@ func moveFileToRecycleBin(file string, serverDir string, ip string, hostname str
 			"error":  err,
 		}).Error("Failed to write metadata")
 	}
-
-	logrus.WithFields(logrus.Fields{
-		"file":     file,
-		"destPath": destPath,
-		"server":   fmt.Sprintf("%s_%s", ip, hostname),
-	}).Info("File successfully moved to recycle bin")
 }
 
 func restoreFile(serverDir string, restoreDate string, singleFile string) {
@@ -283,20 +326,82 @@ func restoreFile(serverDir string, restoreDate string, singleFile string) {
 				"currentPath":  currentPath,
 			}).Info("Restoring file")
 			err = os.Rename(currentPath, originalPath)
+
+			// If os.Rename fails with cross-device error, use copy-and-delete approach
 			if err != nil {
-				logrus.WithFields(logrus.Fields{
-					"originalPath": originalPath,
-					"currentPath":  currentPath,
-					"error":        err,
-				}).Error("Failed to restore file")
+				if linkErr, ok := err.(*os.LinkError); ok && linkErr.Err.Error() == "invalid cross-device link" {
+					logrus.WithFields(logrus.Fields{
+						"currentPath":  currentPath,
+						"originalPath": originalPath,
+					}).Info("Cross-device link error detected. Copying file instead.")
+
+					// Open source file for reading
+					srcFile, err := os.Open(currentPath)
+					if err != nil {
+						logrus.WithFields(logrus.Fields{
+							"currentPath": currentPath,
+							"error":       err,
+						}).Error("Failed to open source file for copying")
+						continue
+					}
+					defer srcFile.Close()
+
+					// Create destination file
+					destFile, err := os.Create(originalPath)
+					if err != nil {
+						logrus.WithFields(logrus.Fields{
+							"originalPath": originalPath,
+							"error":        err,
+						}).Error("Failed to create destination file")
+						continue
+					}
+					defer destFile.Close()
+
+					// Copy contents
+					_, err = io.Copy(destFile, srcFile)
+					if err != nil {
+						logrus.WithFields(logrus.Fields{
+							"currentPath":  currentPath,
+							"originalPath": originalPath,
+							"error":        err,
+						}).Error("Failed to copy file contents")
+						continue
+					}
+
+					// Close files before deleting source file
+					srcFile.Close()
+					destFile.Close()
+
+					// Delete original file in recycle bin
+					err = os.Remove(currentPath)
+					if err != nil {
+						logrus.WithFields(logrus.Fields{
+							"currentPath": currentPath,
+							"error":       err,
+						}).Error("Failed to delete file from recycle bin after copying")
+						continue
+					}
+					logrus.WithFields(logrus.Fields{
+						"originalPath": originalPath,
+						"currentPath":  currentPath,
+					}).Info("File successfully restored by copying and original deleted")
+				} else {
+					logrus.WithFields(logrus.Fields{
+						"originalPath": originalPath,
+						"currentPath":  currentPath,
+						"error":        err,
+					}).Error("Failed to restore file")
+					continue
+				}
 			} else {
 				logrus.WithFields(logrus.Fields{
 					"originalPath": originalPath,
 					"currentPath":  currentPath,
 				}).Info("File successfully restored")
-
-				updateMetadata(dateDir, meta, true)
 			}
+
+			// Update metadata after successful restore
+			updateMetadata(dateDir, meta, true)
 
 			// Exit after restoring a single file
 			if singleFile != "" {
