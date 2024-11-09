@@ -26,6 +26,9 @@ else
     echo "Alias for rm command not found in /etc/bash.bashrc."
 fi
 
+# Reload shell configuration
+source /etc/bash.bashrc
+
 # Function to stop and remove systemd services
 remove_systemd_service() {
     local service_file=$1
