@@ -6,6 +6,20 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Check if NFS client is installed
+if ! command -v mount.nfs &> /dev/null; then
+    echo "NFS client is not installed. Installing NFS client..."
+    if [[ -f /etc/debian_version ]]; then
+        apt-get update
+        apt-get install -y nfs-common
+    elif [[ -f /etc/redhat-release ]]; then
+        yum install -y nfs-utils
+    else
+        echo "Unsupported distribution. Please install the NFS client manually and re-run the script."
+        exit 1
+    fi
+fi
+
 # Define variables
 INSTALL_DIR="/opt/cbin"
 CBIN_PATH="/usr/local/bin/cbin"
