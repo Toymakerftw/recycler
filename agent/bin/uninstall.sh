@@ -79,8 +79,12 @@ echo "Uninstallation complete. All relevant files and services have been removed
 # Optional: Ask the user if they want to unmount the NFS mount (they can choose to keep it)
 read -p "Do you want to unmount the NFS share from $MOUNT_POINT? (y/n): " choice
 if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-    umount "$MOUNT_POINT"
-    echo "NFS mount at $MOUNT_POINT has been unmounted."
+    if mountpoint -q "$MOUNT_POINT"; then
+        umount "$MOUNT_POINT"
+        echo "NFS mount at $MOUNT_POINT has been unmounted."
+    else
+        echo "NFS mount at $MOUNT_POINT is not mounted."
+    fi
 else
     echo "NFS mount at $MOUNT_POINT has not been unmounted. Data is preserved."
 fi
