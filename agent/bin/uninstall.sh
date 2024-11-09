@@ -17,6 +17,15 @@ HEALTHCHECKERSYSTEMD_FILE="/etc/systemd/system/health.service"
 ENV_FILE="$CONFIG_DIR/env"
 MOUNT_POINT="/mnt/recyclebin"
 
+# Remove alias from /etc/bash.bashrc
+echo "Removing alias from /etc/bash.bashrc..."
+if grep -q "alias rm='$CBIN_PATH'" /etc/bash.bashrc; then
+    sed -i "/alias rm='$CBIN_PATH'/d" /etc/bash.bashrc
+    echo "Alias for rm command removed from /etc/bash.bashrc."
+else
+    echo "Alias for rm command not found in /etc/bash.bashrc."
+fi
+
 # Function to stop and remove systemd services
 remove_systemd_service() {
     local service_file=$1
