@@ -20,6 +20,10 @@ if ! command -v mount.nfs &> /dev/null; then
     fi
 fi
 
+# Get server information and create server-specific directory
+ip_address=$(ip addr show | awk '$1 == "inet" {print $2}' | cut -d/ -f1 | grep -v '127.0.0.1')
+hostname=$(hostname)
+
 # Define variables
 INSTALL_DIR="/opt/cbin"
 CBIN_PATH="/usr/local/bin/cbin"
@@ -61,6 +65,9 @@ echo "Creating directories..."
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$LOG_DIR" "$MOUNT_POINT"
 chown root:root "$INSTALL_DIR" "$CONFIG_DIR" "$LOG_DIR"
 chmod 755 "$INSTALL_DIR"
+
+mkdir -p "/mnt/recyclebin/${ip_address}_${hostname}"
+chmod 777 "/mnt/recyclebin/${ip_address}_${hostname}"
 
 # Verify permissions
 if [[ $(stat -c "%U" "$INSTALL_DIR") != "root" || $(stat -c "%G" "$INSTALL_DIR") != "root" || $(stat -c "%a" "$INSTALL_DIR") != "755" ]]; then
