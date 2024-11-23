@@ -38,6 +38,7 @@ type HealthStatus struct {
 	LastNFSCheck       time.Time `json:"last_nfs_check"`
 	NFSCheckAttempts   int       `json:"nfs_check_attempts"`
 	NFSCheckMaxRetries int       `json:"nfs_check_max_retries"`
+	Health             string    `json:"health"` // New field to indicate health status
 }
 
 type HealthChecker struct {
@@ -104,6 +105,7 @@ func NewHealthChecker(config Config, logger *logrus.Logger) *HealthChecker {
 			Timestamp:          time.Now(),
 			LastNFSCheck:       time.Now(),
 			NFSCheckMaxRetries: config.MaxRetries,
+			Health:             "fail", // Default to fail
 		},
 	}
 }
@@ -163,6 +165,12 @@ func (hc *HealthChecker) performBasicHealthCheck() {
 	hc.status.RecycleBinExists = hc.checkRecycleBinExists()
 	hc.status.RecycleFileExists = hc.checkRecycleFileExists()
 	hc.status.AliasExists = hc.checkAliasExists()
+
+	// Determine overall health status
+	hc.status.Health = "pass"
+	if !hc.status.ProgramRunning || !hc.status.NFSExists || !hc.status.RecycleBinExists || !hc.status.RecycleFileExists {
+		hc.status.Health = "fail"
+	}
 
 	// Check if critical conditions are met
 	if !hc.status.ProgramRunning || !hc.status.NFSExists {
@@ -235,6 +243,15 @@ func (hc *HealthChecker) performNFSCheck() {
 		hc.status.LastError = ""
 	}
 	hc.statusMutex.Unlock()
+
+	// Update overall health status based on NFS check result
+	hc.statusMutex.Lock()
+	defer hc.statusMutex.Unlock()
+	if !success {
+		hc.status.Health = "fail"
+	} else {
+		hc.status.Health = "pass"
+	}
 }
 
 func (hc *HealthChecker) checkNFSMount() bool {
@@ -371,6 +388,7 @@ func (hc *HealthChecker) logStatus() {
 		"alias_exists":       hc.status.AliasExists,
 		"timestamp":          hc.status.Timestamp,
 		"nfs_check_attempts": hc.status.NFSCheckAttempts,
+		"health":             hc.status.Health, // Log the health status
 	}).Info("Health check completed")
 }
 
