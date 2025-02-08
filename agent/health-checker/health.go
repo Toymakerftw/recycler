@@ -293,10 +293,15 @@ func (hc *HealthChecker) checkRecycleFileExists() bool {
 }
 
 func (hc *HealthChecker) checkAliasExists() bool {
-	content, err := ioutil.ReadFile("/etc/bash.bashrc")
+	aliasFile := "/etc/profile.d/cbin.sh"
+	if _, err := os.Stat(aliasFile); os.IsNotExist(err) {
+		return false
+	}
+
+	content, err := ioutil.ReadFile(aliasFile)
 	if err != nil {
-		hc.status.LastError = fmt.Sprintf("failed to read bash.bashrc: %v", err)
-		hc.logger.Errorf("Failed to read bash.bashrc: %v", err)
+		hc.status.LastError = fmt.Sprintf("failed to read alias file: %v", err)
+		hc.logger.Errorf("Failed to read alias file: %v", err)
 		return false
 	}
 
@@ -305,47 +310,42 @@ func (hc *HealthChecker) checkAliasExists() bool {
 }
 
 func (hc *HealthChecker) removeAlias() error {
-	content, err := ioutil.ReadFile("/etc/bash.bashrc")
+	aliasFile := "/etc/profile.d/cbin.sh"
+	if _, err := os.Stat(aliasFile); os.IsNotExist(err) {
+		return nil // Alias file doesn't exist
+	}
+
+	// Remove the alias file
+	err := os.Remove(aliasFile)
 	if err != nil {
-		return fmt.Errorf("failed to read bash.bashrc: %v", err)
+		return fmt.Errorf("failed to remove alias file: %v", err)
 	}
 
-	lines := strings.Split(string(content), "\n")
-	var newLines []string
-	for _, line := range lines {
-		if !strings.Contains(line, `alias rm='/usr/local/bin/cbin'`) {
-			newLines = append(newLines, line)
-		}
-	}
-
-	err = ioutil.WriteFile("/etc/bash.bashrc", []byte(strings.Join(newLines, "\n")), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write bash.bashrc: %v", err)
-	}
-
-	cmd := exec.Command("bash", "-c", "source /etc/bash.bashrc")
-	return cmd.Run()
+	return nil
 }
 
 func (hc *HealthChecker) addAlias() error {
-	content, err := ioutil.ReadFile("/etc/bash.bashrc")
-	if err != nil {
-		return fmt.Errorf("failed to read bash.bashrc: %v", err)
-	}
-
+	aliasFile := "/etc/profile.d/cbin.sh"
 	aliasLine := `alias rm='/usr/local/bin/cbin'`
-	if strings.Contains(string(content), aliasLine) {
-		return nil // Alias already exists
+
+	// Check if the alias already exists
+	if _, err := os.Stat(aliasFile); err == nil {
+		content, err := ioutil.ReadFile(aliasFile)
+		if err != nil {
+			return fmt.Errorf("failed to read alias file: %v", err)
+		}
+		if strings.Contains(string(content), aliasLine) {
+			return nil // Alias already exists
+		}
 	}
 
-	newContent := string(content) + "\n" + aliasLine
-	err = ioutil.WriteFile("/etc/bash.bashrc", []byte(newContent), 0644)
+	// Write the alias to the file
+	err := ioutil.WriteFile(aliasFile, []byte(aliasLine+"\n"), 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write bash.bashrc: %v", err)
+		return fmt.Errorf("failed to write alias file: %v", err)
 	}
 
-	cmd := exec.Command("bash", "-c", "source /etc/bash.bashrc")
-	return cmd.Run()
+	return nil
 }
 
 func (hc *HealthChecker) startHTTPServer() {

@@ -52,24 +52,24 @@ func initLogger(serverDir string) {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 	logrus.SetLevel(logrus.InfoLevel)
 
-	// Set file permission to 0777 for both log files
-	err := os.Chmod("/var/log/cbin/cbin.log", 0777)
-	if err != nil {
-		logrus.Errorf("Failed to set permissions on /var/log/cbin/cbin.log: %v", err)
-	}
+    // Set file permissions to 0600 for log files
+    err := os.Chmod("/var/log/cbin/cbin.log", 0600)
+    if err != nil {
+        logrus.Errorf("Failed to set permissions on /var/log/cbin/cbin.log: %v", err)
+    }
 
-	// Ensure the secondary log file exists and set its permissions
-	if _, err := os.Stat(secondaryLogPath); os.IsNotExist(err) {
-		file, err := os.Create(secondaryLogPath)
-		if err != nil {
-			logrus.Fatalf("Failed to create secondary log file: %v", err)
-		}
-		file.Close()
-	}
-	err = os.Chmod(secondaryLogPath, 0777)
-	if err != nil {
-		logrus.Errorf("Failed to set permissions on %s: %v", secondaryLogPath, err)
-	}
+    // Ensure the secondary log file exists and set its permissions
+    if _, err := os.Stat(secondaryLogPath); os.IsNotExist(err) {
+        file, err := os.Create(secondaryLogPath)
+        if err != nil {
+            logrus.Fatalf("Failed to create secondary log file: %v", err)
+        }
+        file.Close()
+    }
+    err = os.Chmod(secondaryLogPath, 0600)
+    if err != nil {
+        logrus.Errorf("Failed to set permissions on %s: %v", secondaryLogPath, err)
+    }
 }
 
 func getServerInfo() (string, string, error) {

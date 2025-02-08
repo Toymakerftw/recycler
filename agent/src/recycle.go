@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -15,6 +16,12 @@ import (
 )
 
 func recycleFiles(files []string, serverDir string, numWorkers int, ip string, hostname string, forceRemove bool) {
+	// Use structured logging
+	logger := logrus.WithFields(logrus.Fields{
+		"server": fmt.Sprintf("%s_%s", ip, hostname),
+		"workers": numWorkers,
+	})
+
 	fileChan := make(chan string, len(files))
 	for _, file := range files {
 		fileChan <- strings.TrimSpace(file)
@@ -28,8 +35,7 @@ func recycleFiles(files []string, serverDir string, numWorkers int, ip string, h
 			defer wg.Done()
 			for file := range fileChan {
 				if !forceRemove && isDirectory(file) {
-					logrus.WithFields(logrus.Fields{"dir": file, "server": fmt.Sprintf("%s_%s", ip, hostname)}).Error("rm: cannot remove its a directory")
-					fmt.Printf("rm: cannot remove '%s': Is a directory\n", file)
+					logger.WithField("dir", file).Error("Cannot remove directory without -rf flag")
 					continue
 				}
 				moveFileToRecycleBin(file, serverDir, ip, hostname)
@@ -37,7 +43,7 @@ func recycleFiles(files []string, serverDir string, numWorkers int, ip string, h
 		}()
 	}
 	wg.Wait()
-	logrus.Info("All specified files have been recycled.")
+	logger.Info("All specified files have been recycled")
 }
 
 func isDirectory(file string) bool {
@@ -46,6 +52,50 @@ func isDirectory(file string) bool {
 		return false
 	}
 	return fileInfo.IsDir()
+}
+
+func safeMove(src, dest string) error {
+	// Try a direct rename first
+	if err := os.Rename(src, dest); err == nil {
+		return nil
+	}
+
+	// Fallback to copy-and-delete for cross-filesystem moves
+	return crossDeviceCopy(src, dest)
+}
+
+func crossDeviceCopy(src, dest string) error {
+	// Open source file
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	// Get file info for permissions
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get source file info: %w", err)
+	}
+
+	// Create destination file with same permissions
+	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	// Copy file contents
+	if _, err := io.Copy(destFile, srcFile); err != nil {
+		return fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	// Delete the original file
+	if err := os.Remove(src); err != nil {
+		return fmt.Errorf("failed to delete original file: %w", err)
+	}
+
+	return nil
 }
 
 func moveFileToRecycleBin(file string, serverDir string, ip string, hostname string) {
@@ -59,9 +109,9 @@ func moveFileToRecycleBin(file string, serverDir string, ip string, hostname str
 		return
 	}
 
-	// Create the date directory for today's date
+	// Create the date directory with 0700 permissions
 	dateDir := filepath.Join(serverDir, time.Now().Format("2006-01-02"))
-	os.MkdirAll(dateDir, 0777)
+	os.MkdirAll(dateDir, 0700)
 
 	var destPath string
 	if fileInfo.IsDir() {
@@ -70,7 +120,7 @@ func moveFileToRecycleBin(file string, serverDir string, ip string, hostname str
 
 		destPath = filepath.Join(dateDir, fmt.Sprintf("%s_%s", filepath.Base(file), time.Now().Format("15:04:05")))
 
-		err = os.Rename(file, destPath)
+		err = safeMove(file, destPath)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{"dir": file, "destPath": destPath, "error": err}).Error("Failed to move directory")
 			return
@@ -99,27 +149,10 @@ func moveFileToRecycleBin(file string, serverDir string, ip string, hostname str
 		destPath = filepath.Join(dateDir, fmt.Sprintf("%s_%s%s", fileInfo.Name(), time.Now().Format("15:04:05"), filepath.Ext(file)))
 
 		// Attempt to rename the file
-		err = os.Rename(file, destPath)
+		err = safeMove(file, destPath)
 		if err != nil {
-			// If rename fails, try copying the file instead
-			data, err := ioutil.ReadFile(file)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"file": file, "error": err}).Error("Failed to read file for copy")
-				return
-			}
-
-			err = ioutil.WriteFile(destPath, data, fileInfo.Mode())
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"file": file, "destPath": destPath, "error": err}).Error("Failed to write file copy")
-				return
-			}
-
-			// Delete the original file after successful copy
-			err = os.Remove(file)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"file": file, "error": err}).Error("Failed to delete original file after copy")
-				return
-			}
+			logrus.WithFields(logrus.Fields{"file": file, "destPath": destPath, "error": err}).Error("Failed to move file")
+			return
 		}
 
 		metadata := FileMetadata{
