@@ -1,0 +1,45 @@
+name: Go CI
+
+on:
+  push:
+    branches:
+      - wip
+  pull_request:
+    branches:
+      - wip
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.18.1'
+
+    - name: Install dependencies
+      run: go mod tidy
+
+    - name: Build recycler-cli
+      run: go build -o recycler-cli ./agent/src/.
+
+    - name: Build health-checker
+      run: go build -o health-checker ./agent/health-checker/health.go
+
+    - name: Package binaries
+      run: |
+        mkdir binaries
+        cp recycler-cli binaries/
+        cp health-checker binaries/
+        zip -r binaries.zip binaries
+
+    - name: Upload binaries artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries
+        path: binaries.zip
