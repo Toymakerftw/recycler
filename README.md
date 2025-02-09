@@ -12,10 +12,12 @@
 
 ## Installation
 
-Install Cbin CLI with a single command:
+Install Cbin CLI:
 
 ```bash
-curl -sSL https://github.com/TheDevOpsPlayground/cbin/raw/refs/heads/v1/agent/bin/install.sh | sudo bash
+curl -sSL -o install.sh https://github.com/Toymakerftw/recycler/raw/refs/heads/wip/agent/bin/install.sh
+chmod +x install.sh
+sudo ./install.sh
 ```
 
 ### Command Options
@@ -37,8 +39,30 @@ curl -sSL https://github.com/TheDevOpsPlayground/cbin/raw/refs/heads/v1/agent/bi
 Remove Cbin CLI with this command:
 
 ```bash
-curl -sSL https://github.com/TheDevOpsPlayground/cbin/raw/refs/heads/v1/agent/bin/uninstall.sh | sudo bash
+curl -sSL https://github.com/Toymakerftw/recycler/raw/refs/heads/wip/agent/bin/uninstall.sh | sudo bash
 ```
+
+## Building from Source
+
+If you prefer to build Cbin from source, follow these steps:
+
+1.  **Clone the repository:**
+    
+    Bash
+    
+    ```
+    git clone https://github.com/toymakerftw/recycler.git]
+    cd cbin
+    ```
+    
+2.  **Build the binaries:**
+    
+    Bash
+    
+    ```
+    go build -o agent/bin/cbin agent/src/main.go
+    go build -o agent/bin/health agent/health-checker/health.go
+    ```
 
 ---
 
