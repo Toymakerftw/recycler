@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Check for root privileges
 if [[ $EUID -ne 0 ]]; then
@@ -6,63 +7,80 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Define variables (matching the installation script)
+INSTALL_DIR="/opt/cbin"
+CBIN_PATH="/usr/local/bin/cbin"
+HEALTHCHECKER_PATH="/usr/local/bin/health"
+CONFIG_DIR="/etc/cbin"
+LOG_DIR="/var/log/cbin"
+MOUNT_POINT="/mnt/recyclebin"
+CBINSYSTEMD_FILE="/etc/systemd/system/cbin.service"
+HEALTHCHECKERSYSTEMD_FILE="/etc/systemd/system/health.service"
+ENV_FILE="/etc/cbin/env"
+ALIAS_FILE="/etc/profile.d/cbin.sh"
+SUDO_WRAPPER="/usr/local/bin/rm-wrapper"
+
+# Function to log messages
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Function to handle errors
+error_exit() {
+    log "ERROR: $1" >&2
+    exit 1
+}
+
 # Stop and disable services
-echo "Stopping and disabling services..."
-systemctl stop cbin
-systemctl disable cbin
-systemctl stop health
-systemctl disable health
+log "Stopping and disabling services..."
+systemctl stop cbin || true
+systemctl disable cbin || true
+systemctl stop health || true
+systemctl disable health || true
 
 # Remove systemd service files
-echo "Removing systemd service files..."
-rm -f /etc/systemd/system/cbin.service
-rm -f /etc/systemd/system/health.service
-
-# Reload systemd
-echo "Reloading systemd..."
+log "Removing systemd service files..."
+rm -f "$CBINSYSTEMD_FILE" "$HEALTHCHECKERSYSTEMD_FILE"
 systemctl daemon-reload
 
-# Remove symbolic links
-echo "Removing symbolic links..."
-rm -f /usr/local/bin/cbin
-rm -f /usr/local/bin/health
+# Unmount NFS share if mounted
+log "Unmounting NFS share..."
+if mountpoint -q "$MOUNT_POINT"; then
+    umount "$MOUNT_POINT" || error_exit "Failed to unmount NFS share"
+fi
 
-# Remove binaries
-echo "Removing binaries..."
-rm -rf /opt/cbin
+# Remove NFS entry from /etc/fstab
+log "Removing NFS entry from /etc/fstab..."
+sed -i "\|$MOUNT_POINT|d" /etc/fstab
 
-# Remove configuration files
-echo "Removing configuration files..."
-rm -rf /etc/cbin
+# Remove installed binaries and symbolic links
+log "Removing binaries and symbolic links..."
+rm -f "$INSTALL_DIR/cbin" "$INSTALL_DIR/health" "$CBIN_PATH" "$HEALTHCHECKER_PATH"
 
-# Remove log files
-echo "Removing log files..."
-rm -rf /var/log/cbin
+# Remove configuration files and directories
+log "Removing configuration files and directories..."
+rm -rf "$CONFIG_DIR" "$LOG_DIR" "$MOUNT_POINT"
 
-# Remove mount point
-echo "Unmounting and removing mount point..."
-umount /mnt/recyclebin
-rm -rf /mnt/recyclebin
+# Remove sudo wrapper
+log "Removing sudo wrapper..."
+rm -f "$SUDO_WRAPPER"
 
-# Remove alias from bash.bashrc
-echo "Removing alias from bash.bashrc..."
-sed -i '/alias rm/d' /etc/bash.bashrc
+# Remove alias file
+log "Removing alias file..."
+rm -f "$ALIAS_FILE"
 
-# Reload bash.bashrc
-echo "Reloading bash.bashrc..."
-source /etc/bash.bashrc
+# Remove alias sourcing from shell configuration files
+log "Removing alias sourcing from shell configuration files..."
+for shell_rc in /etc/bash.bashrc /etc/zsh/zshrc; do
+    if [ -f "$shell_rc" ]; then
+        sed -i "/source $ALIAS_FILE/d" "$shell_rc"
+    fi
+done
 
-# Remove NFS mount from /etc/fstab
-echo "Removing NFS mount from /etc/fstab..."
-sed -i '/nfs/d' /etc/fstab
+# Remove environment file
+log "Removing environment file..."
+rm -f "$ENV_FILE"
 
-# Remove environment files
-echo "Removing environment files..."
-rm -f /etc/cbin/env
-rm -f $(pwd)/.env
-
-# Remove install directory
-echo "Removing install directory..."
-rm -rf /opt/cbin
-
-echo "Uninstallation complete."
+# Log completion
+log "Uninstallation completed successfully!"
+echo "Uninstallation completed successfully!"
